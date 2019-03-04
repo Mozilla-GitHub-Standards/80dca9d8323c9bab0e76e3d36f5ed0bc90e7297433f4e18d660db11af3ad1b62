@@ -8,7 +8,8 @@ The JSON files should have the format:
 
 {
   "codeRepositories": [
-    {"url": "https://github.com/$ORG/$REPO.git"},
+    {"url": "https://github.com/$ORG/$REPO.git", "visibility": "public"},
+    {"url": "https://github.com/$ORG/$REPO.git", "visibility": "private"},
     ...
   ]
 }
@@ -36,6 +37,10 @@ https://github.com/mozilla-services/shavar-server-list-config.git
 https://github.com/mozilla/watchdog-proxy.git
 https://github.com/mozilla/version-control-tools.git
 https://github.com/mozilla/wpt-sync.git
+$ ./map_repo_urls.py --visibility public -c "echo {}" services/metadata/*.json
+...
+https://github.com/mozilla/tls-observatory.git
+# private repos skipped
 """
 
 import argparse
@@ -65,9 +70,11 @@ def get_service_name(service_meta, fallback="unnamed"):
     )
 
 
-def iter_repo_urls(service_meta):
+def iter_repo_urls(service_meta, visibility):
     """
     Generator to get repository URLs from an iterable of service metadata.
+
+    Optionally, filtering to match a provided visibility.
 
     Warns for missing codeRepositories key and missing URLs in a code
     repository.
@@ -79,6 +86,9 @@ def iter_repo_urls(service_meta):
         raise StopIteration
 
     for i, repo in enumerate(service_meta.get("codeRepositories", [])):
+        if visibility is not None and visibility != repo.get("visibility", None):
+            continue
+
         repo_url = repo.get("url", None)
         if not repo_url:
             logger.warn(
@@ -105,6 +115,14 @@ def parse_args():
         dest="dry_run",
         action="store_true",
         help="Print the commands we'd run, but don't run them.",
+    )
+
+    parser.add_argument(
+        "--visibility",
+        dest="visibility",
+        type=str,
+        default=None,
+        help="Filter for URLs matching the provided visibility",
     )
 
     parser.add_argument(
@@ -137,7 +155,7 @@ def main():
         logger.setLevel(logging.getLevelName("ERROR"))
 
     for service_meta in iter_service_metadata(args.json_files):
-        for repo_url in iter_repo_urls(service_meta):
+        for repo_url in iter_repo_urls(service_meta, args.visibility):
             service_name = get_service_name(service_meta)  # NB: unused
             run_command_on_repo(args.cmd.replace("{}", repo_url), args.dry_run)
 
